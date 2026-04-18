@@ -204,27 +204,6 @@ function ExcalidrawBoard({ userName, roomId }) {
 
   return (
     <>
-      {/* Top Bar */}
-      <div className="top-bar">
-        <div className="top-bar__logo">
-          <div className="top-bar__logo-icon">✏️</div>
-          <span className="top-bar__logo-text">WebBelajar</span>
-        </div>
-        <div className="top-bar__users">
-          {users.map((user) => (
-            <div
-              key={user.id}
-              className={`user-avatar ${user.id === selfId ? 'user-avatar--self' : ''}`}
-              style={{ backgroundColor: user.color }}
-            >
-              {user.name.charAt(0).toUpperCase()}
-              <div className="user-avatar__tooltip">
-                {user.name} {user.id === selfId ? '(kamu)' : ''}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* Excalidraw Canvas */}
       <div className="excalidraw-wrapper">
@@ -259,18 +238,6 @@ function ExcalidrawBoard({ userName, roomId }) {
         <span>Room: {roomId}</span>
       </div>
 
-      {/* Action Buttons */}
-      <div className="action-buttons">
-        <button className="action-btn" onClick={handleShare} title="Bagikan Room" id="share-btn">
-          🔗 Share
-        </button>
-        <button className="action-btn" onClick={handleExport} title="Export PNG" id="export-btn">
-          📥 Export
-        </button>
-        <button className="action-btn action-btn--danger" onClick={handleClear} title="Hapus Semua" id="clear-btn">
-          🗑️ Clear
-        </button>
-      </div>
     </>
   )
 }

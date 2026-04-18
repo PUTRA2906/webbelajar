@@ -42,9 +42,11 @@ html, body, #root {
 /* ── Top Bar ── */
 .top-bar {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
   z-index: 100;
+  flex-direction: column;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -62,11 +64,11 @@ html, body, #root {
 @keyframes wb-slideDown {
   from {
     opacity: 0;
-    transform: translateY(-20px);
+    transform: translateY(-50%) translateX(-20px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(-50%) translateX(0);
   }
 }
 
