@@ -24,8 +24,19 @@ function debounce(fn, delay) {
 }
 
 function ExcalidrawBoard({ userName, roomId }) {
+  const excalidrawAPIRef = useRef(null)
+  const pendingSceneRef = useRef(null)
   const [excalidrawAPI, setExcalidrawAPI] = useState(null)
   const [connected, setConnected] = useState(false)
+
+  const setExcalidrawAPICallback = useCallback((api) => {
+    excalidrawAPIRef.current = api
+    setExcalidrawAPI(api)
+    if (pendingSceneRef.current) {
+      api.updateScene({ elements: pendingSceneRef.current })
+      pendingSceneRef.current = null
+    }
+  }, [])
   const [users, setUsers] = useState([])
   const [selfId, setSelfId] = useState(null)
   const [selfColor, setSelfColor] = useState('#6c5ce7')
@@ -36,57 +47,37 @@ function ExcalidrawBoard({ userName, roomId }) {
   // Collaborator pointers for Excalidraw
   const [collaborators, setCollaborators] = useState(new Map())
 
-  // Initialize socket connection
+  // Initialize socket connection — does NOT depend on excalidrawAPI
   useEffect(() => {
     const socket = io(window.location.origin, {
       query: { userName, roomId },
     })
     socketRef.current = socket
 
-    socket.on('connect', () => {
-      setConnected(true)
-    })
+    socket.on('connect', () => setConnected(true))
+    socket.on('disconnect', () => setConnected(false))
 
-    socket.on('disconnect', () => {
-      setConnected(false)
-    })
-
-    socket.on('user:self', ({ id, color, name }) => {
+    socket.on('user:self', ({ id, color }) => {
       setSelfId(id)
       setSelfColor(color)
     })
 
-    socket.on('users:update', (usersList) => {
-      setUsers(usersList)
-    })
+    socket.on('users:update', (usersList) => setUsers(usersList))
 
-    // Receive full scene from server (initial load or sync)
-    socket.on('scene:init', ({ elements, appState }) => {
-      if (excalidrawAPI) {
+    const applyScene = (elements) => {
+      if (excalidrawAPIRef.current) {
         isRemoteUpdate.current = true
-        excalidrawAPI.updateScene({
-          elements: elements || [],
-        })
-        setTimeout(() => {
-          isRemoteUpdate.current = false
-        }, 100)
+        excalidrawAPIRef.current.updateScene({ elements })
+        setTimeout(() => { isRemoteUpdate.current = false }, 100)
+      } else {
+        pendingSceneRef.current = elements
       }
-    })
+    }
 
-    // Receive scene update from other users
-    socket.on('scene:update', ({ elements }) => {
-      if (excalidrawAPI) {
-        isRemoteUpdate.current = true
-        excalidrawAPI.updateScene({
-          elements: elements || [],
-        })
-        setTimeout(() => {
-          isRemoteUpdate.current = false
-        }, 100)
-      }
-    })
+    socket.on('scene:init', ({ elements }) => applyScene(elements || []))
+    socket.on('scene:update', ({ elements }) => applyScene(elements || []))
+    socket.on('canvas:clear', () => applyScene([]))
 
-    // Receive cursor/pointer update
     socket.on('cursor:update', ({ id, pointer, button, name, color, selectedElementIds }) => {
       setCollaborators((prev) => {
         const next = new Map(prev)
@@ -110,21 +101,8 @@ function ExcalidrawBoard({ userName, roomId }) {
       })
     })
 
-    // Canvas clear
-    socket.on('canvas:clear', () => {
-      if (excalidrawAPI) {
-        isRemoteUpdate.current = true
-        excalidrawAPI.updateScene({ elements: [] })
-        setTimeout(() => {
-          isRemoteUpdate.current = false
-        }, 100)
-      }
-    })
-
-    return () => {
-      socket.disconnect()
-    }
-  }, [userName, roomId, excalidrawAPI])
+    return () => socket.disconnect()
+  }, [userName, roomId])
 
   // When excalidrawAPI is ready, request initial scene
   useEffect(() => {
@@ -133,22 +111,34 @@ function ExcalidrawBoard({ userName, roomId }) {
     }
   }, [excalidrawAPI])
 
+  // Also request scene when socket connects (handles reconnect case)
+  useEffect(() => {
+    if (!socketRef.current) return
+    const onConnect = () => {
+      if (excalidrawAPIRef.current) {
+        socketRef.current.emit('scene:request')
+      }
+    }
+    socketRef.current.on('connect', onConnect)
+    return () => socketRef.current?.off('connect', onConnect)
+  }, [])
+
   // Handle scene changes (send to server)
   const handleChange = useCallback(
     debounce((elements, appState) => {
       if (isRemoteUpdate.current) return
       if (!socketRef.current?.connected) return
 
-      // Only send if elements actually changed
-      const sceneVersion = elements.reduce((acc, el) => acc + el.version, 0)
+      const sceneVersion = elements.reduce((acc, el) => acc + (el.version || 0), 0)
       if (sceneVersion === lastSceneVersion.current) return
       lastSceneVersion.current = sceneVersion
 
       socketRef.current.emit('scene:update', {
-        elements: elements,
+        elements,
+        version: sceneVersion,
         roomId,
       })
-    }, 300),
+    }, 100),
     [roomId]
   )
 
@@ -239,7 +229,7 @@ function ExcalidrawBoard({ userName, roomId }) {
       {/* Excalidraw Canvas */}
       <div className="excalidraw-wrapper">
         <Excalidraw
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
+          excalidrawAPI={setExcalidrawAPICallback}
           onChange={handleChange}
           onPointerUpdate={handlePointerUpdate}
           theme="dark"
