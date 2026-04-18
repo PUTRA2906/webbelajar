@@ -67,8 +67,10 @@ function ExcalidrawBoard({ userName, roomId }) {
     const applyScene = (elements) => {
       if (excalidrawAPIRef.current) {
         isRemoteUpdate.current = true
+        // Update lastSceneVersion so handleChange doesn't re-broadcast this back
+        lastSceneVersion.current = elements.reduce((acc, el) => acc + (el.version || 0), 0)
         excalidrawAPIRef.current.updateScene({ elements })
-        setTimeout(() => { isRemoteUpdate.current = false }, 100)
+        setTimeout(() => { isRemoteUpdate.current = false }, 300)
       } else {
         pendingSceneRef.current = elements
       }
@@ -133,11 +135,7 @@ function ExcalidrawBoard({ userName, roomId }) {
       if (sceneVersion === lastSceneVersion.current) return
       lastSceneVersion.current = sceneVersion
 
-      socketRef.current.emit('scene:update', {
-        elements,
-        version: sceneVersion,
-        roomId,
-      })
+      socketRef.current.emit('scene:update', { elements, roomId })
     }, 100),
     [roomId]
   )

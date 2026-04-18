@@ -29,7 +29,6 @@ function getRoom(roomId) {
     rooms[roomId] = {
       elements: [],
       users: {},
-      version: 0,
     };
   }
   return rooms[roomId];
@@ -75,18 +74,19 @@ io.on('connection', (socket) => {
     socket.emit('scene:init', { elements: room.elements });
   });
 
-  // Scene update from user — only accept if version is newer
-  socket.on('scene:update', ({ elements, version }) => {
+  // Scene update from user — merge by element id, keep highest version per element
+  socket.on('scene:update', ({ elements }) => {
     const incoming = elements || [];
-    // Use sum of element versions as scene version if not provided
-    const incomingVersion = version ?? incoming.reduce((acc, el) => acc + (el.version || 0), 0);
-    const currentVersion = room.version ?? 0;
-
-    if (incomingVersion >= currentVersion) {
-      room.elements = incoming;
-      room.version = incomingVersion;
-      socket.to(roomId).emit('scene:update', { elements: room.elements });
+    const merged = new Map(room.elements.map(el => [el.id, el]));
+    for (const el of incoming) {
+      const existing = merged.get(el.id);
+      if (!existing || el.version >= existing.version) {
+        merged.set(el.id, el);
+      }
     }
+    // Remove deleted elements (isDeleted flag)
+    room.elements = Array.from(merged.values());
+    socket.to(roomId).emit('scene:update', { elements: room.elements });
   });
 
   // Cursor movement
